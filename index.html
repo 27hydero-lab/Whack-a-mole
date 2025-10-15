@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://aframe.io/releases/1.7.0/aframe.min.js"></script>
+    <title>VR Whack-a-Mole</title>
+    <style>
+        #gameUI {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: Arial, sans-serif;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <!-- Game UI for desktop users -->
+    <div id="gameUI">
+        <h2>VR Whack-a-Mole</h2>
+        <p>Score: <span id="score">0</span></p>
+        <p>Time: <span id="timer">60</span> seconds</p>
+        <button onclick="startGame()" id="startButton">Start Game</button>
+        <p><small>Click moles or gaze at them to hit!</small></p>
+    </div>
+
+    <a-scene vr-mode-ui="enabled: true">
+        <!-- Environment -->
+        <a-sky color="#4A90E2"></a-sky>
+        
+        <!-- Ground -->
+        <a-plane position="0 0 -4" 
+                 rotation="-90 0 0" 
+                 width="10" 
+                 height="10" 
+                 color="#2E8B57" 
+                 shadow="receive: true">
+        </a-plane>
+        
+        <!-- Lighting -->
+        <a-light type="ambient" color="#404040"></a-light>
+        <a-light type="directional" position="0 10 5" color="white" intensity="0.6"></a-light>
+        
+        <!-- VR Score Display -->
+        <a-text id="vrScore" 
+                position="0 3 -3" 
+                value="Score: 0 | Time: 60" 
+                color="white" 
+                align="center" 
+                scale="1.5 1.5 1.5">
+        </a-text>
+        
+        <!-- Mole Holes (visual indicators) -->
+        <a-cylinder position="-2 0.01 -2" radius="0.6" height="0.02" color="#8B4513" class="hole"></a-cylinder>
+        <a-cylinder position="0 0.01 -2" radius="0.6" height="0.02" color="#8B4513" class="hole"></a-cylinder>
+        <a-cylinder position="2 0.01 -2" radius="0.6" height="0.02" color="#8B4513" class="hole"></a-cylinder>
+        <a-cylinder position="-2 0.01 -4" radius="0.6" height="0.02" color="#8B4513" class="hole"></a-cylinder>
+        <a-cylinder position="0 0.01 -4" radius="0.6" height="0.02" color="#8B4513" class="hole"></a-cylinder>
+        <a-cylinder position="2 0.01 -4" radius="0.6" height="0.02" color="#8B4513" class="hole"></a-cylinder>
+        <a-cylinder position="-2 0.01 -6" radius="0.6" height="0.02" color="#8B4513" class="hole"></a-cylinder>
+        <a-cylinder position="0 0.01 -6" radius="0.6" height="0.02" color="#8B4513" class="hole"></a-cylinder>
+        <a-cylinder position="2 0.01 -6" radius="0.6" height="0.02" color="#8B4513" class="hole"></a-cylinder>
+        
+        <!-- Moles (boxes and spheres) -->
+        <a-box id="mole0" position="-2 -0.5 -2" width="0.8" height="0.8" depth="0.8" color="#8B4513" class="mole" visible="false"></a-box>
+        <a-sphere id="mole1" position="0 -0.5 -2" radius="0.4" color="#654321" class="mole" visible="false"></a-sphere>
+        <a-box id="mole2" position="2 -0.5 -2" width="0.8" height="0.8" depth="0.8" color="#8B4513" class="mole" visible="false"></a-box>
+        <a-sphere id="mole3" position="-2 -0.5 -4" radius="0.4" color="#654321" class="mole" visible="false"></a-sphere>
+        <a-box id="mole4" position="0 -0.5 -4" width="0.8" height="0.8" depth="0.8" color="#8B4513" class="mole" visible="false"></a-box>
+        <a-sphere id="mole5" position="2 -0.5 -4" radius="0.4" color="#654321" class="mole" visible="false"></a-sphere>
+        <a-box id="mole6" position="-2 -0.5 -6" width="0.8" height="0.8" depth="0.8" color="#8B4513" class="mole" visible="false"></a-box>
+        <a-sphere id="mole7" position="0 -0.5 -6" radius="0.4" color="#654321" class="mole" visible="false"></a-sphere>
+        <a-box id="mole8" position="2 -0.5 -6" width="0.8" height="0.8" depth="0.8" color="#8B4513" class="mole" visible="false"></a-box>
+
+        <!-- Camera with cursor for VR interaction -->
+        <a-entity id="cameraRig" position="0 1.6 0">
+            <a-camera look-controls wasd-controls>
+                <!-- Cursor for clicking and gazing -->
+                <a-cursor position="0 0 -1"
+                         geometry="primitive: ring; radiusInner: 0.01; radiusOuter: 0.02"
+                         material="color: yellow; shader: flat"
+                         raycaster="objects: .mole"
+                         fuse="true"
+                         fuse-timeout="1500">
+                </a-cursor>
+            </a-camera>
+        </a-entity>
+    </a-scene>
+
+    <script>
+        // Game variables
+        let score = 0;
+        let timeLeft = 60;
+        let gameActive = false;
+        let gameTimer;
+        let moleSpawnTimer;
+        let activeMoles = [];
+
+        // Get DOM elements
+        const moles = document.querySelectorAll('.mole');
+        const scoreElement = document.getElementById('score');
+        const timerElement = document.getElementById('timer');
+        const vrScoreElement = document.getElementById('vrScore');
+        const startButton = document.getElementById('startButton');
+
+        // Wait for A-Frame to load
+        document.addEventListener('DOMContentLoaded', function() {
+            setupGame();
+        });
+
+        function setupGame() {
+            // Add event listeners to all moles
+            moles.forEach((mole, index) => {
+                // Click event for desktop
+                mole.addEventListener('click', function() {
+                    hitMole(index);
+                });
+                
+                // Fusing event for VR gaze
+                mole.addEventListener('fusing', function() {
+                    hitMole(index);
+                });
+            });
+        }
+
+        function startGame() {
+            score = 0;
+            timeLeft = 60;
+            gameActive = true;
+            activeMoles = [];
+            
+            // Update UI
+            updateScore();
+            updateTimer();
+            startButton.textContent = "Game Running...";
+            startButton.disabled = true;
+            
+            // Hide all moles
+            moles.forEach(mole => {
+                mole.setAttribute('visible', false);
+                mole.setAttribute('position', mole.getAttribute('position').x + ' -0.5 ' + mole.getAttribute('position').z);
+            });
+            
+            // Start game timer
+            gameTimer = setInterval(function() {
+                timeLeft--;
+                updateTimer();
+                
+                if (timeLeft <= 0) {
+                    endGame();
+                }
+            }, 1000);
+            
+            // Start spawning moles
+            spawnMole();
+        }
+
+        function spawnMole() {
+            if (!gameActive) return;
+            
+            // Choose a random mole that's not already active
+            let availableMoles = [];
+            moles.forEach((mole, index) => {
+                if (!activeMoles.includes(index)) {
+                    availableMoles.push(index);
+                }
+            });
+            
+            if (availableMoles.length === 0) {
+                // All moles are active, wait and try again
+                setTimeout(spawnMole, 500);
+                return;
+            }
+            
+            const randomIndex = availableMoles[Math.floor(Math.random() * availableMoles.length)];
+            const mole = moles[randomIndex];
+            
+            // Show the mole
+            activeMoles.push(randomIndex);
+            mole.setAttribute('visible', true);
+            
+            // Animate mole popping up
+            const pos = mole.getAttribute('position');
+            mole.setAttribute('position', pos.x + ' 0.4 ' + pos.z);
+            
+            // Hide mole after 2 seconds if not hit
+            setTimeout(function() {
+                if (activeMoles.includes(randomIndex)) {
+                    hideMole(randomIndex);
+                }
+            }, 2000);
+            
+            // Schedule next mole spawn
+            const nextSpawnDelay = Math.random() * 1500 + 800; // 0.8 to 2.3 seconds
+            setTimeout(spawnMole, nextSpawnDelay);
+        }
+
+        function hitMole(moleIndex) {
+            if (!gameActive || !activeMoles.includes(moleIndex)) return;
+            
+            const mole = moles[moleIndex];
+            
+            // Add points
+            score += 10;
+            updateScore();
+            
+            // Visual feedback - flash red
+            const originalColor = mole.getAttribute('material').color || mole.getAttribute('color');
+            mole.setAttribute('color', 'red');
+            
+            setTimeout(function() {
+                mole.setAttribute('color', originalColor);
+            }, 200);
+            
+            // Hide the mole
+            hideMole(moleIndex);
+        }
+
+        function hideMole(moleIndex) {
+            const mole = moles[moleIndex];
+            const pos = mole.getAttribute('position');
+            
+            // Move mole down
+            mole.setAttribute('position', pos.x + ' -0.5 ' + pos.z);
+            
+            // Hide after animation
+            setTimeout(function() {
+                mole.setAttribute('visible', false);
+            }, 300);
+            
+            // Remove from active moles
+            activeMoles = activeMoles.filter(index => index !== moleIndex);
+        }
+
+        function updateScore() {
+            scoreElement.textContent = score;
+            vrScoreElement.setAttribute('value', `Score: ${score} | Time: ${timeLeft}`);
+        }
+
+        function updateTimer() {
+            timerElement.textContent = timeLeft;
+            vrScoreElement.setAttribute('value', `Score: ${score} | Time: ${timeLeft}`);
+        }
+
+        function endGame() {
+            gameActive = false;
+            clearInterval(gameTimer);
+            
+            // Hide all moles
+            moles.forEach((mole, index) => {
+                hideMole(index);
+            });
+            
+            // Reset UI
+            startButton.textContent = "Start Game";
+            startButton.disabled = false;
+            
+            // Show final score
+            setTimeout(function() {
+                alert(`Game Over! Final Score: ${score}`);
+            }, 500);
+        }
+    </script>
+</body>
+</html>
